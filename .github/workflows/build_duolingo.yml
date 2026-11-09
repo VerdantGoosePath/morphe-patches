@@ -39,8 +39,9 @@ jobs:
           test -f "$patch_dir/duolingo/premium/EnablePremiumPatch.kt"
           # Worktree-only pruning: the Git branch's other source files are untouched.
           find "$patch_dir" -mindepth 1 -maxdepth 1 ! -name duolingo -exec rm -rf -- {} +
-          # Duolingo does not use app-specific Android extension modules.
-          find extensions -mindepth 1 -maxdepth 1 -type d -exec rm -rf -- {} +
+          # Preserve the shared module: the Gradle build requires :extensions to exist.
+          # Remove only app-specific extension modules not used by Duolingo.
+          find extensions -mindepth 1 -maxdepth 1 -type d ! -name shared -exec rm -rf -- {} +
           # Resources below are only used by other apps' patches.
           rm -rf patches/src/main/resources patches/pairip
           # Keep only Duolingo's compatibility definition in the compiled bundle.
