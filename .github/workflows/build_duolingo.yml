@@ -60,6 +60,11 @@ jobs:
               )
           }
           EOF
+          # Give this local source a distinct identity in Morphe Manager.
+          sed -i 's/name = "Hoodles Morphe Patches"/name = "Duolingo 6.102.3 (Custom)"/' patches/build.gradle.kts
+          sed -i 's/description = "Various patches for use with Morphe"/description = "Duolingo 6.102.3 patch bundle for Morphe Manager"/' patches/build.gradle.kts
+          sed -i 's|source = "git@github.com:hoo-dles/morphe-patches.git"|source = "https://github.com/VerdantGoosePath/morphe-patches"|' patches/build.gradle.kts
+          grep -Fq 'name = "Duolingo 6.102.3 (Custom)"' patches/build.gradle.kts
           echo "Duolingo Kotlin sources retained:"
           find "$patch_dir" -name '*.kt' -print
           test "$(find "$patch_dir" -name '*.kt' | wc -l)" -eq 9
