@@ -1,0 +1,95 @@
+name: Build Duolingo 6.102.3 MPP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - duolingo-6.102.3
+    paths:
+      - .github/workflows/build_duolingo.yml
+      - patches/src/main/kotlin/hoodles/morphe/patches/duolingo/**
+      - patches/src/main/kotlin/hoodles/morphe/util/**
+      - patches/build.gradle.kts
+      - gradle/**
+      - settings.gradle.kts
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build-duolingo:
+    name: Build Duolingo-only patch bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure Java 21
+        uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Keep only Duolingo patch sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_dir=patches/src/main/kotlin/hoodles/morphe/patches
+          test -f "$patch_dir/duolingo/premium/EnablePremiumPatch.kt"
+          # Worktree-only pruning: the Git branch's other source files are untouched.
+          find "$patch_dir" -mindepth 1 -maxdepth 1 ! -name duolingo -exec rm -rf -- {} +
+          # Duolingo does not use app-specific Android extension modules.
+          find extensions -mindepth 1 -maxdepth 1 -type d -exec rm -rf -- {} +
+          # Resources below are only used by other apps' patches.
+          rm -rf patches/src/main/resources patches/pairip
+          # Keep only Duolingo's compatibility definition in the compiled bundle.
+          cat > patches/src/main/kotlin/hoodles/morphe/compatibility/Constants.kt <<'EOF'
+          package hoodles.morphe.compatibility
+
+          import app.morphe.patcher.patch.AppTarget
+          import app.morphe.patcher.patch.Compatibility
+
+          object Compat {
+              val DUOLINGO = Compatibility(
+                  name = "Duolingo",
+                  packageName = "com.duolingo",
+                  appIconColor = 0x58CC02,
+                  targets = listOf(AppTarget("6.102.3"))
+              )
+          }
+          EOF
+          echo "Duolingo Kotlin sources retained:"
+          find "$patch_dir" -name '*.kt' -print
+          test "$(find "$patch_dir" -name '*.kt' | wc -l)" -eq 9
+
+      - name: Build Morphe Manager bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :patches:buildAndroid --no-daemon
+
+      - name: Verify and prepare MPP
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundles=(patches/build/libs/patches-*.mpp)
+          if (( ${#bundles[@]} != 1 )); then
+            printf 'Expected exactly one .mpp, found %d\n' "${#bundles[@]}" >&2
+            ls -lah patches/build/libs/ || true
+            exit 1
+          fi
+          test -s "${bundles[0]}"
+          mkdir -p dist
+          cp "${bundles[0]}" dist/duolingo-6.102.3.mpp
+          file dist/duolingo-6.102.3.mpp
+          sha256sum dist/duolingo-6.102.3.mpp
+
+      - name: Upload Duolingo MPP
+        uses: actions/upload-artifact@v4
+        with:
+          name: duolingo-6.102.3-mpp
+          path: dist/duolingo-6.102.3.mpp
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
